@@ -1,0 +1,741 @@
+<?xml version="1.0" encoding="UTF-8" ?>
+<Module>
+  <ModulePrefs
+	 title="♣										QuikMeet ♣"
+     title_url="www.massgraph.com"
+     description="QuikMeet finds the perfect meeting spots around you, so you don't have to!"
+     author="MassGraph"
+     author_email="mohamed@agolo.com"
+     height="2100" width="700" scrolling="true" >
+
+    <Require feature="google.calendar-0.5"/>
+    <Require feature="google.calendar-0.5.read"/>
+	<Require feature="locked-domain"/>
+	<Require feature="dynamic-height"/>
+	<Require feature="minimessage"/>
+	<Require feature="opensocial-0.8"/>
+  </ModulePrefs>
+  
+  <Content type="html">
+
+  <![CDATA[
+
+<style>
+
+body {
+font: normal 12px arial,sans-serif;
+}
+
+.out {
+padding: 0pt 10px;  
+color: #555;
+}
+
+.candidate {
+color: rgb(85, 85, 85); 
+text-decoration: none; 
+text-align: center; 
+width: 100%;
+}
+
+.candidate .wrapper{
+	margin: 0pt auto; 
+	width: 125px; 
+	text-align: center;
+	display: block;
+    max-height: 125px;
+    max-height: 110px;
+    overflow: hidden;
+    
+}
+
+.candidate .wrapper img{
+	max-width: 125px;
+	min-height: 100px;
+	vertical-align: middle;
+} 
+
+.title {
+padding:10px 0 0 10px;
+text-align:left;
+height:30px;
+}
+
+.title a.ext {
+background: url("http://www.fxcmmena.com/landing-page/liveaccount/en/fxtr/images/en_US_FXCM/open_in_new_window_icon.gif") repeat scroll 0 0 transparent;
+    display: block;
+    float: right;
+    height: 9px;
+    width: 10px;
+}
+
+</style>
+
+<!-- Specify HTML 5 -->
+ <!DOCTYPE HTML>
+
+ <div id="divItem1" class="out" data-deal=""></div>
+ <div id="divItem2" class="out" data-deal=""></div>
+ <div id="divItem3" class="out" data-deal=""></div>
+ <div id="reco-scroller" class="out" data-more=""></div>
+ 
+ <!-- <a href="https://opentable.com/">OpenTable.</a> </div>
+ <div id="out"><div id="groupon"><br>We also have local deals from <a href="https://groupon.com/">Groupon!</a> </div></div> -->
+
+
+<script src="https://ajax.googleapis.com/ajax/libs/jquery/1.5.1/jquery.min.js"></script>
+<script type="text/javascript" src="https://maps.googleapis.com/maps/api/js?key=AIzaSyBxZi4nEAbdewI6SD-fT23zsZQ-JQPecmc&sensor=true"></script>
+<!-- script type="text/javascript" src="http://maps.google.com/maps/api/js?sensor=false"></script -->
+<script type="text/javascript">
+  
+/*
+alert("Invalidating");
+opensocial.invalidate("https://dl.dropbox.com/s/k1m6cc3zhe9bri2/quikmeet.xml");
+gadgets.window.adjustHeight()
+*/
+
+var locationCoords = '';
+
+//Called every time the calendar opens up and the gadget is loaded
+gadgets.util.registerOnLoadHandler(function()
+{
+	//Local storage clearing logic
+	if('localStorage' in window)
+	{
+	    //This logic needs to be changed later to clear and reload expired entries only. But this works for now
+		//alert("Clearing stored values");
+		localStorage.clear();
+	}
+
+	//Get the current geolocation when we load the first time - to speed up queries later. Can I subscribe to position change?
+	if(navigator.geolocation)
+	{
+		navigator.geolocation.getCurrentPosition(navigatorCallback);
+	}
+
+	//TODO: Initiate a dummy connection with 4Square to speed up queries?
+
+	//Register the callback handlers
+	google.calendar.read.subscribeToEvents(subscribeEventCallback);
+});
+
+//Get the current position of the user and his device
+function navigatorCallback(position) 
+{
+	var latitude = position.coords.latitude;
+	var longitude = position.coords.longitude;
+    locationCoords = encodeURIComponent(latitude) + ',' + encodeURIComponent(longitude);
+};
+
+var currentEventStartTime = '', currentEventEndTime = '';
+var boolEditPageOpened = false;
+var strLocationInMemory = '';
+
+$(document).ready(function() {
+
+		$(document).bind('DataReceived', DataReceived)
+
+		$('#divItem1').html("QuikMeet finds the perfect meeting spots around you, so you don't have to!");
+		$('#divItem2').html("<br>"); $('#divItem3').html("");
+		$('#reco-scroller').html("Select a new time slot or an existing event and find the right place!");
+
+		$('div').click(function() {
+
+			//alert(JSON.stringify(currentEventStartTime) + " " + JSON.stringify(currentEventEndTime) + " " + JSON.stringify(boolEditPageOpened));
+			
+			if(currentEventStartTime != '' && currentEventEndTime != '' && !boolEditPageOpened)
+			{
+				//Get the event information from thisLocationAddresses
+				//Set the index to pick up the data from. We set it to 0, 1, 2 now. Later it will be an offset from startId
+				var index = -1;
+				if($(this).attr("id") == 'divItem1')
+				{
+					index = 0;//startId
+				}
+				if($(this).attr("id") == 'divItem2')
+				{
+					index = 1;//startId + 1
+				}
+				if($(this).attr("id") == 'divItem3')
+				{
+					index = 2;//startId + 2
+				}
+
+				//alert("Creating and opening event page");
+				var eventDetails = thisLocationAddresses[index].venue_name + "\n" + thisLocationAddresses[index].venue_address + "\n" + thisLocationAddresses[index].venue_rating;
+
+				var eventData = { title: 'New event', location: currentEventLocation, details: eventDetails, allDay: false, 
+				startTime: currentEventStartTime, endTime: currentEventEndTime
+				};
+				
+//				strLocationInMemory = currentEventLocation;
+				boolEditPageOpened = true;
+				google.calendar.composeEvent(eventData);//Create new event instead of editing the old event
+			}
+			
+			//event.preventDefault();
+			//show just the chosen one in div id=main and make it non-clickable
+        });
+    });
+
+/*
+Currently there are 3 situations which will call this one:
+The user opened an event page.
+The user clicked an event to make the 'bubble' appear.
+The user dragged or clicked on the grid to begin creating an event
+*/
+function subscribeEventCallback(event) 
+{
+	google.calendar.refreshEvents();
+
+	//If event is defined but the event has not been opened
+	//or the event is defined and the event is open
+	//load the recos
+	//TODO: This will change later when we will only show the clicked reco for the 2nd case
+	//alert(JSON.stringify(event) + " " + JSON.stringify(boolEditPageOpened));
+	if(event && !boolEditPageOpened)
+  	{
+		//Get the list of all event names and locations for the date where the user clicks on the calendar
+		/*
+		var start_time = "00:00:00";
+		var end_time = "11:59:59";
+		
+		//Get event locations for all user calendars for selected dates
+		google.calendar.read.getEvents(eventsCallback, '@viewer', start_time, end_time);
+		//out += 'Start Time = ' + gadgets.json.stringify(start_time) + '\n';
+	    //out += 'End Time = '   + gadgets.json.stringify(end_time) + '\n';
+		*/
+
+		currentEventStartTime = event.startTime;
+	    currentEventEndTime  = event.endTime; 
+
+		if(event.location && event.location.length > 0)
+		{
+			//alert("Event location: " + location + "In-memory location: " + strLocationInMemory);
+			//if(location != strLocationInMemory)
+//			if(!(location in localStorage))
+//			{
+				//alert("Event location: " + location + "In-memory location: " + strLocationInMemory);
+				//strLocationInMemory = location;
+				$('#divItem1').html("Loading recommendations..."); 
+				$('#divItem2').html(""); $('#divItem3').html(""); $('#reco-scroller').html("");
+				makeFoursquareRequest(event.location, 'near');
+//			}
+//			else
+//			{
+//				//Just keep the current state intact
+//				return;
+//			}
+		}
+		else
+		{
+			//No location specified, use pre-stored location coordinates unless stored location has gone stale (need to do this)
+
+			//This seems to be peculiar to FF. We will ignore for now
+			//			if(!locationCoords && navigator.geolocation)
+			//			{
+			//				navigator.geolocation.getCurrentPosition(navigatorCallback);
+			//			}
+			$('#divItem1').html("Loading recommendations around your current coordinates..."); 
+			$('#divItem2').html(""); $('#divItem3').html(""); $('#reco-scroller').html("");
+			//strLocationInMemory = locationCoords;
+			makeFoursquareRequest(locationCoords, 'll');
+		}
+	}
+	
+	//If we are on the event open page, don't do anything
+	if(event && boolEditPageOpened)
+	{
+		return;
+	}
+
+	//It's being called when we return from the create event screen back to the calendar screen
+	if(!event && boolEditPageOpened)
+	{
+		currentEventStartTime = '';
+	    currentEventEndTime = '';
+		boolEditPageOpened = false;
+
+		$('#divItem1').html("QuikMeet finds the perfect meeting spots around you, so you don't have to!");
+		$('#divItem2').html("<br>"); $('#divItem3').html("");
+		$('#reco-scroller').html("Select a new time slot or an existing event and find the right place!");
+	}
+
+	if(!event && !boolEditPageOpened)
+	{
+		return;
+		//Do nothing. Preserve the current state.
+	}
+};
+
+var foodId_array = new Array();
+var thisLocationAddresses = [];//global array of recos for current location
+var currentEventLocation = '';
+var receivedDataFromProvider = false;
+
+//Need to wrap this up so we can make calls to multiple providers and cache the response for future
+function makeFoursquareRequest(location,type)
+{
+	if(!(location in localStorage))
+	{
+		//alert("Not in local: " + location);
+		currentEventLocation = location;
+		var params = {};
+		params[gadgets.io.RequestParameters.CONTENT_TYPE] = gadgets.io.ContentType.JSON;
+		
+		// This URL returns a JSON-encoded string that represents a JavaScript object
+		//var url = "http://gadget-doc-examples.googlecode.com/svn/trunk/opensocial-gadgets/json-data.txt";
+		
+		//https://api.foursquare.com/v2/venues/search?ll=40.7,-74&limit=50&oauth_token=X4IAOIFN5RSTBM2QQ4LCZSBFZLWMDI5D2BYN5SUW3ZUYRMN2&v=20120524
+
+		var url = "https://api.foursquare.com/v2/venues/explore?";
+		url += type +"=" + encodeURIComponent(location);
+		url += "&limit=10";
+		url += "&section=food";
+		url += "&oauth_token=X4IAOIFN5RSTBM2QQ4LCZSBFZLWMDI5D2BYN5SUW3ZUYRMN2&v=20120527";
+		//alert(url);
+		foodId_array = [];
+		gadgets.io.makeRequest(url, foodFourquareResponse, params);
+	}
+	else
+	{
+		//alert("Comparing locations while deciding storage source: " + strLocationInMemory + " " + location);
+		//If the location is related to what's currently in memory, then do nothing and keep the current GUI
+//		if(strLocationInMemory == location)
+//		{
+//			//alert("Same location as the one in memory");
+//			return;
+//		}
+//		else
+//		{
+			//Populate thisLocationAddresses from local storage
+			//alert("Getting data from HTML5 storage");
+			populateDataFromStorage(location);
+			displayFood(location);
+//		}
+	}
+};
+
+function populateDataFromStorage(pStrLocation)
+{
+	//Reinitialize the location address array
+	thisLocationAddresses = [];
+	receivedDataFromProvider = false;
+
+	if(pStrLocation in localStorage)
+	{
+		//alert("in local storage = " + pStrLocation);
+		var strHTML5Deals = localStorage.getItem(pStrLocation);
+		var strAllDeals = strHTML5Deals.split('|');
+		//alert("Retrieved deals: " + strAllDeals);
+		for(var i = 0; i < strAllDeals.length; i++)
+		{
+			thisLocationAddresses.push(JSON.parse(strAllDeals[i]));
+		}
+//		for(i = 0; i < strAllDeals.length; i++)
+//		{
+//			alert(JSON.stringify(thisLocationAddresses[i]));
+//		}
+	}
+};
+
+//TODO: Check if the FourSquare response has all the information we need without getting into the JSON call
+function foodFourquareResponse(obj) 
+{
+	//alert(gadgets.json.stringify(obj.data));
+	//alert("hello");
+	var out = "";
+	var groups = obj.data.response.groups;
+	
+	//TODO: Add error handling here if groups is null
+
+	for (var g = 0; g < groups.length; g++)
+	{
+		var venues = groups[g].items;
+		for (var v = 0; v < venues.length; v++)
+		{
+			out += v +": " + venues[v].venue.name + "\n";
+			foodId_array.push(venues[v].venue.id);
+		}
+	}
+	populateDataFromProvider();
+	receivedDataFromProvider = true;
+	//displayFood(currentEventLocation); //We don't need to make this call because it would already be displayed in the callback
+};
+
+function populateDataFromProvider()
+{	
+	thisLocationAddresses.length = 0;//Clear out the location address array
+	thisLocationAddresses = [];
+
+	for(var i=0; i < foodId_array.length; i++)
+	{
+		var venue_id = '', venue_name = '', venueUrl = '', venue_address = '', venue_url = '', venue_image = '', venue_rating = '';
+		var thisAddressData = {};
+
+		venueUrl = 'https://api.foursquare.com/v2/venues/' + foodId_array[i] + '?oauth_token=X4IAOIFN5RSTBM2QQ4LCZSBFZLWMDI5D2BYN5SUW3ZUYRMN2&v=20120529';
+	
+		//alert(venueUrl);
+			
+		$.getJSON(venueUrl, function(data) 
+		{
+			//alert(gadgets.json.stringify(data));
+			
+			venue_id 	= data.response.venue.id;
+			venue_name 	= data.response.venue.name;
+			//venue_name = venue_name.replace(/'/g, "&#039;");
+			
+			venue_address = "";
+			if (data.response.venue.location.address != undefined)
+				venue_address += data.response.venue.location.address;
+			if (data.response.venue.location.city != undefined)
+				venue_address += ", " + data.response.venue.location.city;
+			if (data.response.venue.location.state != undefined)
+				venue_address += ", " + data.response.venue.location.state;
+			if (data.response.venue.location.postalCode != undefined)
+				venue_address += ", " + data.response.venue.location.postalCode;
+			//venue_address = venue_address.replace(/'/g, "&#039;");
+			
+			venue_url = "https://www.google.com/search?q=" + venue_name;
+			if (data.response.venue.url != undefined)
+				venue_url = data.response.venue.url;
+			//venue_url = venue_url.replace(/'/g, "&#039;");
+			
+			venue_image = "https://foursquare.com/img/categories/food/default_88.png";
+			if ((data.response.venue.photos.groups[1] != undefined) && (data.response.venue.photos.groups[1].items[0].url != undefined))
+				venue_image =data.response.venue.photos.groups[1].items[0].url;
+			//venue_image = venue_image.replace(/'/g, "&#039;");
+						
+			venue_rating = "Rating:  Not available";
+			if((data.response.venue.stats != undefined) && (data.response.venue.stats.checkinsCount != undefined))
+				venue_rating = "Rating:  " + data.response.venue.stats.checkinsCount;
+
+			thisAddressData = new AddressData(venue_id, venue_name, venue_address, venue_url, venue_image, venue_rating);
+			//alert("Just made: " + JSON.stringify(thisAddressData));
+			thisLocationAddresses.push(thisAddressData);
+
+			$(document).trigger('DataReceived');
+        });
+	}
+};
+
+function makeStruct(names) 
+{
+  var members = names.split(',');
+  var count = names.length;
+
+  function constructor() 
+  {
+    for (var i = 0; i < count; i++) 
+	{
+      this[members[i]] = arguments[i];
+    }
+  }
+  return constructor;
+}
+
+var startId = 0, endId = foodId_array.length;
+var currentDivIndex = 1, maxDivIndex = 3;
+var maxItemsDisplayed = 3;
+var AddressData = makeStruct("venue_id,venue_name,venue_address,venue_url,venue_image,venue_rating");
+
+function displayFood(pEventLocation)
+{
+	//If we retrieved the data online, then the DataReceived function would have already displayed the HTML
+	//So we can just exit.
+
+	if(receivedDataFromProvider)
+	{
+		//StartId changes only when the Browse Next or Browse Previous buttons are clicked
+		if(startId == 0)//Then we have already displayed the first 3 items. Exit.
+		{
+			//alert("Already displayed");
+			return;
+		}
+	}
+
+	//alert("Displaying data from hard/soft memory for ######" + pEventLocation);
+	
+	for(var i = startId; i < startId + maxItemsDisplayed; i++)
+	{
+		var lThisHtml = '';
+		var thisAddressData = thisLocationAddresses[i];
+
+		lThisHtml = '<a href="#" class="candidate" id="'+thisAddressData.venue_id+'" address="'+thisAddressData.venue_address+'">'
+		+ '<div class="wrapper"> <img title="'+thisAddressData.venue_address+'\n'+thisAddressData.venue_rating+'" src="' 
+		+ thisAddressData.venue_image + '"> </div>' + '<div class="title">' + thisAddressData.venue_name + '<a class="ext" title="Visit: ' 
+		+ thisAddressData.venue_url + '" target="_blank" href="' + thisAddressData.venue_url + '"></a></div>'
+		+ '</a>';
+
+		//alert(lThisHtml);
+		
+		var currentDiv = document.getElementById('divItem' + currentDivIndex.toString());
+		//alert(currentDiv);
+		currentDiv.innerHTML = lThisHtml;
+//		currentDiv.data("deal", thisAddressData.venue_address + '|' + thisAddressData.venue_rating);
+//		currentDiv.attr('data-deal', thisAddressData.venue_address + '|' + thisAddressData.venue_rating);
+		currentDivIndex += 1; //currentDivIndex = (currentDivIndex > maxDivIndex)? maxDivIndex : currentDivIndex;
+	}
+	currentDivIndex = 1;
+};
+
+//This shouldn't be called except for the first time we need to get data for a certain location
+function DataReceived(event)
+{
+	//alert("StartID = " + startId.toString() + "CurrentDivIndex = " + currentDivIndex.toString() + "thisLocationAddressesLength = " + thisLocationAddresses.length.toString() + "MaxIndex = " + maxDivIndex.toString());
+	
+	//Display the first 3 items that come in. Don't wait for all of it to come in
+	//if(startId < maxDivIndex)
+	if(thisLocationAddresses.length <= maxDivIndex)
+	{
+		var lThisHtml = '';
+		var thisAddressData = thisLocationAddresses[startId];
+
+		lThisHtml = '<a href="#" class="candidate" id="'+thisAddressData.venue_id+'" address="'+thisAddressData.venue_address+'">'
+		+ '<div class="wrapper"> <img title="'+thisAddressData.venue_address+'\n'+thisAddressData.venue_rating+'" src="' 
+		+ thisAddressData.venue_image + '"> </div>' + '<div class="title">' + thisAddressData.venue_name + '<a class="ext" title="Visit: ' 
+		+ thisAddressData.venue_url + '" target="_blank" href="' + thisAddressData.venue_url + '"></a></div>'
+		+ '</a>';
+
+		//alert(lThisHtml);
+		
+		var currentDiv = document.getElementById('divItem' + currentDivIndex.toString());
+		//alert(currentDiv);
+		currentDiv.innerHTML = lThisHtml;
+//		currentDiv.data("deal", thisAddressData.venue_address + '|' + thisAddressData.venue_rating);
+//		currentDiv.attr('data-deal', thisAddressData.venue_address + '|' + thisAddressData.venue_rating);
+		currentDivIndex += 1; //currentDivIndex = (currentDivIndex > maxDivIndex)? maxDivIndex : currentDivIndex;
+		startId += 1; //startId = (startId == maxDivIndex)? 0 : startId + 1;
+		return;
+	}
+	else
+	{
+		startId = 0; currentDivIndex = 1;
+	}
+
+	//If all the data is in, then put this into storage
+	if(thisLocationAddresses.length == foodId_array.length)
+	{
+			if(('localStorage' in window) && window['localStorage'] !== null)
+			{
+				var strDeals = '';
+				//alert("Storing deals for: " + currentEventLocation + " " + JSON.stringify(thisLocationAddresses));
+				for(var i = 0; i < thisLocationAddresses.length; i++)
+				{
+					strDeals += JSON.stringify(thisLocationAddresses[i]) + '|';
+				}
+				strDeals = strDeals.slice(0, strDeals.length - 1);
+				//alert(strDeals);
+				localStorage.setItem(currentEventLocation, strDeals);
+			}
+	}
+	
+	document.getElementById('reco-scroller').innerHTML = '';
+};
+
+
+
+
+
+
+
+
+
+
+
+///////////////////////////////////////////////////////////////////////////////////
+var restaurantsArray = new Array();
+var dealsArray = new Array();
+var grouponApiKey = '6b75cf54471bdb0b81a19dbd4039e16dd12b32bb';
+
+/*
+function eventsCallback(response)
+{
+	var out = '';
+	if('error' in response[0]) 
+	{ 
+		out += 'Can\'t load calendar events for ' + response[0].email + '\n';
+		return;
+	}
+	else
+	{
+		alert('No error');
+		var location = '';
+		var goGeo = true;
+		
+		//There's just one response object for @viewer
+		var events = response[0]['events'];
+		var indexCurrentEvent = -1;
+		
+		alert(events.length);
+		if(events && events.length > 0)
+		{
+			alert('Going through events to get the current one');
+			//Skip the all day events
+			for (var j=0 ; j<events.length; j++)
+			{
+				if (events[j].allDay == true)
+				{
+					//alert(events[i].title);
+					indexCurrentEvent++;
+				}
+			}
+
+			currentEventId = events[indexCurrentEvent].id;	
+
+			if((indexCurrentEvent < events.length) && ('location' in events[indexCurrentEvent]) && (events[indexCurrentEvent].location.length>0))
+			{
+				goGeo = false;
+				location = events[indexCurrentEvent].location;
+				//alert(location);
+				makeFoursquareRequest(location,'near');
+				//makeOpentableRequest(location,'rear');
+			}	
+		}
+		
+		if (goGeo) 
+		{
+			//No location specified, use pre-stored location coordinates unless stored location has gone stale (need to do this)
+			//navigatorCallback(position);
+			makeFoursquareRequest(locationCoords,'ll');
+		}
+	}
+};
+*/
+
+function displayRestaurant()
+{
+    //alert(restaurantsArray.length);
+    var html = '<div style="clear:both;"></div>';
+    for (var i=0;i<restaurantsArray.length;i++) {
+        html += '<div class="_restaurant" style="margin-bottom:10px"/>'
+	     +  '<a href="#" class="candidate">'
+	     +  '<div class="title">' + restaurantsArray[i].name 
+		 +  '<a class="ext" target="_blank" href="' + restaurantsArray[i].reserve_url + '"> Reserve table</a> </div>';
+		document.getElementById('out').html (html);
+	}
+}
+
+function makeOpentableRequest(location,type)
+{
+    //here the location is a zip code
+    //alert(location);
+    var params = {};
+    params[gadgets.io.RequestParameters.CONTENT_TYPE] = gadgets.io.ContentType.JSON;
+    var url= "http://opentable.heroku.com/api/restaurants?";
+    url += "zip=";
+    url += location;
+    //alert(url);
+    restaurantsArray= [];
+    gadgets.io.makeRequest(url, opentableResponse, params);
+}
+
+function opentableResponse(obj) {
+   //alert(gadgets.json.stringify(obj.data.restaurants));
+   var out = new Array();
+   var restaurants = obj.data.restaurants;
+   // recommends the top 3 restaurants
+   //alert(restaurants.length);
+   for (var i=0;i<restaurants.length && i<10;i++) {
+       // JS use gabage collector, so might simply passed in the restaurants reference
+       restObj = new Object();
+       restObj.id = restaurants[i].id;
+       restObj.name = restaurants[i].name;
+       restObj.address = restaurants[i].address;
+       restObj.city = restaurants[i].city;
+       restObj.state = restaurants[i].state;
+       restObj.zip = restaurants[i].postal_code;
+       restObj.reserve_url = restaurants[i].reserve_url;
+       restaurantsArray[i]=restObj;
+   }
+   displayRestaurant();
+}
+
+function googleMapsCallback(res, status) {
+      var ziparr = res[0].formatted_address.match(/,\s\w{2}\s(\d{5})/);
+      var zip = ziparr[1];
+      //alert("zip"+zip);
+      makeOpentableRequest(zip,'near');
+}
+
+function displayDeals()
+{
+    var html = '<div style="clear:both;"></div>';
+    for (var i=0;i<dealsArray.length;i++) {
+        html += '<div class="_deal" style="margin-bottom:10px"/>'
+	     +  '<a href="#" class="candidate">'
+	     +  '<div class="title">' + dealsArray[i].name 
+		 +  '<a class="ext" target="_blank" href="' + dealsArray[i].dealUrl + '"> View deal</a> </div>'
+		 +  '<a class="ext" target="_blank" href="' + dealsArray[i].buyUrl + '"> Buy deal</a> </div>'
+		document.getElementById('groupon').html(html);
+	}
+}
+
+function makeGrouponRequest(lat, lng)
+{
+    var params = {};
+    params[gadgets.io.RequestParameters.CONTENT_TYPE] = gadgets.io.ContentType.JSON;
+    var url = "https://api.groupon.com/v2/deals.json?";
+    url += 'lat=' + lat;
+    url += '&lng=' + lng;
+    url += '&client_id=' + grouponApiKey;
+    dealsArray = [];
+    gadgets.io.makeRequest(url, grouponResponse, params);
+}
+
+function grouponResponse(obj) {
+    var out = new Array();
+    var deals = obj.data.deals;
+    for (var i=0;i<deals.length && i<3; i++) {
+        dealObj = new Object();
+		dealObj.dealUrl = deals[i].dealUrl;
+		dealObj.buyUrl = deals[i].buyUrl;
+		dealObj.sidebarImageUrl = deals[i].sidebarImageUrl;
+        dealsArray[i]=dealObj;	
+    }
+    displayDeals();
+}
+
+/*
+function navigatorCallback(position) 
+{
+    var location = '';
+    var latitude = position.coords.latitude;
+    var longitude = position.coords.longitude;
+    location = latitude + ',' + longitude;
+	var latf = parseFloat(latitude);
+	var lonf = parseFloat(longitude);
+    //alert(location);
+    var point = new google.maps.LatLng(latitude,longitude);
+    //alert(point);
+    var searchZip = new google.maps.Geocoder().geocode({'latLng': point}, googleMapsCallback);
+    makeGrouponRequest(latitude,longitude);
+    //makeOpentableRequest(location,'ll');
+}
+*/
+
+
+/*
+ {
+ "id":"N3Z2dDVpNTAxb3ZhMW80bmtidDkwcHFnaDAgbXRhbnRhd3lAbQ",
+ "title":"Cormick, Karam, Sage &amp; Mohamed &amp; Peiti",
+ "startTime":{"year":2012,"month":5,"date":25,"hour":19,"minute":0,"second":0},
+ "endTime":{"year":2012,"month":5,"date":25,"hour":20,"minute":0,"second":0},
+ "allDay":false,
+ "location":"Uris Lobby ",
+ "color":"#B99AFF",
+ "palette":{"darkest":"#B99AFF","dark":"#6733DD","medium":"#B99AFF","light":"#B99AFF","lightest":"#EBE3FF"}
+ }
+ */
+
+
+
+
+</script>
+  ]]>
+  
+
+
+  </Content>
+</Module>
+
